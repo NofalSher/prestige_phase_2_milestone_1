@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: prestige_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "5672:5672"      # AMQP port
+      - "15672:15672"    # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - prestige_network
+
+  nfl_ingestor:
+    build:
+      context: ./nfl_ingestor
+      dockerfile: Dockerfile
+    container_name: prestige_ingestor
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
+      - RABBITMQ_QUEUE=game_events
+      - INGESTOR_INTERVAL=10
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=development
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - prestige_network
+    restart: unless-stopped
+
+  nfl_processor:
+    build:
+      context: ./nfl_processor
+      dockerfile: Dockerfile
+    container_name: prestige_processor
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
+      - RABBITMQ_QUEUE=game_events
+      - LOG_LEVEL=INFO
+      - ENVIRONMENT=development
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - prestige_network
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+
+networks:
+  prestige_network:
+    driver: bridge
